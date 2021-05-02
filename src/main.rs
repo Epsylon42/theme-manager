@@ -28,8 +28,7 @@ impl ThemeManager {
             dir: dir.to_owned(),
             templates: Self::read_templates(&dir.join("templates"))
                 .context("Could not read templates directory")?,
-            themes: Self::read_themes(&dir.join("themes"))
-                .context("Could not read themes")?,
+            themes: themes::read_themes(dir),
         })
     }
 
@@ -39,17 +38,6 @@ impl ThemeManager {
         let templates_desc: TemplatesDesc = toml::de::from_str(&s)
             .context("templates.toml parse error")?;
         Ok(templates_desc)
-    }
-
-    fn read_themes(dir: &Path) -> Result<HashMap<String, ThemeDesc>, Error> {
-        let themes = utils::read_dir(dir, utils::ReadDirOptions::Directories).unwrap()
-            .map(|entry| {
-                ThemeDesc::read_from_dir(&entry.path)
-                    .map(|theme| (entry.file_name, theme))
-            })
-            .collect::<Result<_, Error>>().unwrap();
-
-        Ok(themes)
     }
 
     pub fn install_theme(&self, theme: &str) {

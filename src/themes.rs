@@ -1,95 +1,53 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::collections::{hash_map, HashMap};
 use serde::Deserialize;
 
 use crate::prelude::*;
+use utils::tree_reader::{TreeReader, TreeReaderNode};
 
 #[derive(Debug, Default, Deserialize)]
 pub struct UnitDesc {
     pub values: HashMap<String, String>,
 }
 
-impl UnitDesc {
-    fn read_from_dir(dir: &Path) -> Result<Self, Error> {
-        let values = utils::read_dir(dir, utils::ReadDirOptions::Files)?
-            .map(|entry| {
-                let key = entry.file_name;
-                let value = std::fs::read_to_string(&entry.path)?;
-                Ok((key, value))
-            })
-            .collect::<Result<HashMap<_, _>, Error>>()?;
-
-        Ok(UnitDesc {
-            values,
-        })
-    }
-
-    fn add_value_from_file(&mut self, unit_name: &str, path: &Path) -> Result<(), Error> {
-        let prefix = format!("unit-{}-", unit_name);
-
-        let file_name = path.file_name().unwrap().to_str().unwrap();
-        assert!(dbg!(file_name).starts_with(dbg!(&prefix)));
-
-        let value_name = &file_name[prefix.len()..];
-        let data = std::fs::read_to_string(path)?;
-
-        self.values.insert(String::from(value_name), data);
-        Ok(())
-    }
-}
-
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct ThemeDesc {
     pub hooks: (),
     #[serde(alias = "unit")]
     pub units: HashMap<String, UnitDesc>,
 }
 
-impl ThemeDesc {
-    pub fn read_from_dir(dir: &Path) -> Result<Self, Error> {
-        let units_dir = dir.join("units");
+pub fn read_themes(dir: &Path) -> HashMap<String, ThemeDesc> {
+    let desc = &[
+        TreeReaderNode::Literal(String::from("theme")),
+        TreeReaderNode::Any,
+        TreeReaderNode::Literal(String::from("unit")),
+        TreeReaderNode::Any,
+        TreeReaderNode::Any,
+    ];
 
-        let units = if std::fs::metadata(&units_dir).is_ok() {
-            utils::read_dir(&units_dir, utils::ReadDirOptions::Directories)?
-                .map(|entry| {
-                    UnitDesc::read_from_dir(&entry.path)
-                        .map(|desc| (entry.file_name, desc))
-                })
-                .collect::<Result<HashMap<String, UnitDesc>, Error>>()?
-        } else {
-            HashMap::new()
-        };
+    let mut themes = HashMap::<String, ThemeDesc>::new();
+    for entry in TreeReader::new(dir, desc).get_file_entries_recursive() {
+        assert_eq!(entry.captures.0.len(), 3);
+        let mut captures = entry.captures.0;
 
-        let mut desc = ThemeDesc {
-            hooks: (),
-            units,
-        };
-        desc.read_from_files(dir).unwrap();
-        Ok(desc)
+        let value = std::fs::read_to_string(entry.path).unwrap();
+
+        let value_name = captures.pop().unwrap();
+        let unit_name = captures.pop().unwrap();
+        let theme_name = captures.pop().unwrap();
+
+        let theme = ensure_contains(&mut themes, theme_name);
+        let unit = ensure_contains(&mut theme.units, unit_name);
+        unit.values.insert(value_name, value);
     }
 
-    fn read_from_files(&mut self, dir: &Path) -> Result<(), Error> {
-        let prefix = "unit-";
+    themes
+}
 
-        let entries = utils::read_dir(dir, utils::ReadDirOptions::Files).unwrap()
-            .filter(|entry| entry.file_name.starts_with(&prefix));
-        for entry in entries {
-            let dash = entry.file_name[prefix.len()..].find("-").unwrap();
-            let path = &entry.path;
-            let unit_name = &entry.file_name[prefix.len()..][..dash];
-            match self.units.entry(String::from(unit_name)) {
-                hash_map::Entry::Vacant(entry) => {
-                    let mut unit = UnitDesc::default();
-                    unit.add_value_from_file(unit_name, path).unwrap();
-                    entry.insert(unit);
-                }
-
-                hash_map::Entry::Occupied(mut entry) => {
-                    entry.get_mut().add_value_from_file(unit_name, path).unwrap();
-                }
-            }
-        }
-
-        Ok(())
+fn ensure_contains<'a, T: Default>(map: &'a mut HashMap<String, T>, key: String) -> &'a mut T {
+    match map.entry(key) {
+        hash_map::Entry::Vacant(entry) => entry.insert(T::default()),
+        hash_map::Entry::Occupied(entry) => entry.into_mut(),
     }
 }
