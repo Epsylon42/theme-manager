@@ -1,5 +1,4 @@
 use std::{collections::HashMap, path::{Path, PathBuf}};
-use std::iter::FromIterator;
 
 pub mod templates;
 pub mod themes;
@@ -68,8 +67,11 @@ impl ThemeManager {
             };
             let result = template.render_to_string(values).unwrap();
 
-            std::fs::create_dir_all(unit.target.parent().unwrap()).unwrap();
-            std::fs::write(&unit.target, &result).unwrap();
+            let target = self.templates.resolve_target(&unit.target).unwrap();
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).unwrap();
+            }
+            std::fs::write(&target, &result).unwrap();
         }
     }
 
@@ -77,8 +79,11 @@ impl ThemeManager {
         for unit in &self.templates.units {
             let template = std::fs::read_to_string(self.dir.join("templates").join(&unit.file)).unwrap();
 
-            std::fs::create_dir_all(unit.target.parent().unwrap()).unwrap();
-            std::fs::write(&unit.target, &template).unwrap();
+            let target = self.templates.resolve_target(&unit.target).unwrap();
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).unwrap();
+            }
+            std::fs::write(&target, &template).unwrap();
         }
     }
 }

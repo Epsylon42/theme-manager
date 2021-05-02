@@ -1,10 +1,12 @@
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 use serde::Deserialize;
+
+use crate::prelude::*;
 
 #[derive(Debug, Deserialize)]
 pub struct TemplateFileDesc {
     pub file: PathBuf,
-    pub target: PathBuf,
+    pub target: String,
 }
 
 impl TemplateFileDesc {
@@ -15,6 +17,18 @@ impl TemplateFileDesc {
 
 #[derive(Debug, Deserialize)]
 pub struct TemplatesDesc {
-    #[serde(rename = "file")]
+    pub vars: HashMap<String, String>,
+    #[serde(alias = "file")]
     pub units: Vec<TemplateFileDesc>,
+}
+
+impl TemplatesDesc {
+    pub fn resolve_target(&self, target: &str) -> Result<PathBuf, Error> {
+        let result = mustache::compile_str(target)
+            .unwrap()
+            .render_to_string(&self.vars)
+            .unwrap();
+
+        Ok(PathBuf::from(result))
+    }
 }

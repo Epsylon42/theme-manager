@@ -41,7 +41,7 @@ impl UnitDesc {
 #[derive(Debug, Deserialize)]
 pub struct ThemeDesc {
     pub hooks: (),
-    #[serde(rename = "unit")]
+    #[serde(alias = "unit")]
     pub units: HashMap<String, UnitDesc>,
 }
 
