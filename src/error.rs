@@ -8,6 +8,8 @@ pub enum Error {
     Deserialize(#[from] toml::de::Error),
     #[error("{}", _0)]
     Mustache(#[from] mustache::Error),
+    #[error("{}", _0)]
+    Hook(String),
     #[error("{}: {}", context, inner)]
     Context {
         context: String,

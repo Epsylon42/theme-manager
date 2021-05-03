@@ -43,7 +43,7 @@ pub fn read_dir(dir: &Path, options: ReadDirOptions) -> Result<impl Iterator<Ite
     let iter = std::fs::read_dir(dir)?
         .filter_map(|entry| {
             let entry = entry.ok()?;
-            let metadata = entry.metadata().ok()?;
+            let metadata = std::fs::metadata(&entry.path()).ok()?;
             Some((entry, metadata))
         })
         .filter(move |(_, metadata)| options.filter(&metadata))

@@ -44,6 +44,8 @@ impl ThemeManager {
         let theme = &self.themes[theme];
         let empty_values = HashMap::new();
 
+        theme.hooks.preinstall.run().unwrap();
+
         for unit in &self.templates.units {
             let template = std::fs::read_to_string(self.dir.join("templates").join(&unit.file)).unwrap();
             let template = mustache::compile_str(&template).unwrap();
@@ -61,6 +63,8 @@ impl ThemeManager {
             }
             std::fs::write(&target, &result).unwrap();
         }
+
+        theme.hooks.postinstall.run().unwrap();
     }
 
     pub fn install_empty(&self) {
