@@ -88,6 +88,10 @@ pub struct TreeReaderEntry {
 pub struct Captures(pub Vec<String>);
 
 fn match_file_name(desc: &[TreeReaderNode], name: &str) -> Option<Captures> {
+    if name.starts_with('_') {
+        return None;
+    }
+
     if name.split('-').count() != desc.len() {
         return None;
     }
@@ -109,6 +113,10 @@ fn match_file_name(desc: &[TreeReaderNode], name: &str) -> Option<Captures> {
 }
 
 fn match_dir_name(desc: &[TreeReaderNode], name: &str) -> Option<Captures> {
+    if name.starts_with('_') {
+        return None;
+    }
+
     if name.split('-').count() > desc.len() {
         return None;
     }
@@ -228,5 +236,19 @@ mod tests {
         assert!(match_dir_name(nodes, "theme-dark-units").is_some());
         assert!(match_dir_name(nodes, "theme-dark-unit-termite").is_some());
         assert!(match_dir_name(nodes, "theme-dark-unit-termite-color").is_none());
+    }
+
+    #[test]
+    fn ignore() {
+        let captures = match_file_name(&[
+            TreeReaderNode::Any
+        ], "_abc");
+        assert!(captures.is_none());
+
+        let captures = match_dir_name(&[
+            TreeReaderNode::Literal(String::from("theme")),
+            TreeReaderNode::Any,
+        ], "_themes");
+        assert!(captures.is_none());
     }
 }
