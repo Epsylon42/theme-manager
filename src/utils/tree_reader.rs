@@ -5,6 +5,7 @@ use crate::prelude::*;
 #[derive(Debug, PartialEq)]
 pub enum TreeReaderNode {
     Literal(String),
+    AnyDir,
     Any,
 }
 
@@ -23,7 +24,7 @@ impl<'a> TreeReader<'a> {
     }
 
     pub fn get_file_entries_recursive(&self) -> Vec<TreeReaderEntry> {
-        let add_additional_capture = self.desc.get(0) == Some(&TreeReaderNode::Any);
+        let add_additional_capture = matches!(self.desc.get(0), Some(TreeReaderNode::Any | TreeReaderNode::AnyDir));
 
         let mut entries = self.get_file_entries();
         for dir_entry in self.get_dir_entries() {
@@ -103,6 +104,10 @@ fn match_file_name(desc: &[TreeReaderNode], name: &str) -> Option<Captures> {
                 return None;
             }
 
+            TreeReaderNode::AnyDir => {
+                return None;
+            }
+
             TreeReaderNode::Any => {
                 captures.push(String::from(name_part));
             }
@@ -133,6 +138,8 @@ fn match_dir_name(desc: &[TreeReaderNode], name: &str) -> Option<Captures> {
         TreeReaderNode::Any => if name_parts.len() == desc.len() {
             return None;
         }
+
+        TreeReaderNode::AnyDir => {}
     }
 
     let mut captures = Vec::new();
@@ -143,10 +150,14 @@ fn match_dir_name(desc: &[TreeReaderNode], name: &str) -> Option<Captures> {
                 return None;
             }
 
-            TreeReaderNode::Any => {
+            TreeReaderNode::Any | TreeReaderNode::AnyDir => {
                 captures.push(String::from(*name_part));
             }
         }
+    }
+
+    if *last_relevant_desc == TreeReaderNode::AnyDir {
+        captures.push(String::from(*last_name_part));
     }
 
     Some(Captures(captures))
@@ -215,27 +226,40 @@ mod tests {
     }
 
     #[test]
-    fn match_units() {
+    fn match_theme_directory() {
         let nodes = &[
             TreeReaderNode::Literal(String::from("theme")),
-            TreeReaderNode::Any,
+            TreeReaderNode::AnyDir,
             TreeReaderNode::Literal(String::from("unit")),
             TreeReaderNode::Any,
             TreeReaderNode::Any,
         ];
 
-        let captures = match_file_name(nodes, "theme-dark-unit-termite-color");
-        assert!(captures.is_some());
-        assert_eq!(captures.unwrap().0, &[
-            String::from("dark"),
-            String::from("termite"),
-            String::from("color"),
-        ]);
-
         assert!(match_dir_name(nodes, "themes").is_some());
-        assert!(match_dir_name(nodes, "theme-dark-units").is_some());
-        assert!(match_dir_name(nodes, "theme-dark-unit-termite").is_some());
-        assert!(match_dir_name(nodes, "theme-dark-unit-termite-color").is_none());
+
+        let captures = match_dir_name(nodes, "theme-dark");
+        assert!(captures.is_some());
+        assert_eq!(captures.unwrap().0, &[String::from("dark")]);
+
+        let captures = match_file_name(nodes, "theme-dark-unit-termite-color");
+        assert!(captures.is_none());
+    }
+
+    #[test]
+    fn match_units() {
+        let nodes = &[
+            TreeReaderNode::Literal(String::from("unit")),
+            TreeReaderNode::Any,
+            TreeReaderNode::Any,
+        ];
+
+        let captures = match_file_name(nodes, "unit-termite-color");
+        assert!(captures.is_some());
+        assert_eq!(captures.unwrap().0, &[String::from("termite"), String::from("color")]);
+
+        assert!(match_dir_name(nodes, "units").is_some());
+        assert!(match_dir_name(nodes, "unit-termite").is_some());
+        assert!(match_dir_name(nodes, "unit-termite-color").is_none());
     }
 
     #[test]
@@ -246,9 +270,9 @@ mod tests {
         assert!(captures.is_none());
 
         let captures = match_dir_name(&[
-            TreeReaderNode::Literal(String::from("theme")),
+            TreeReaderNode::Literal(String::from("unit")),
             TreeReaderNode::Any,
-        ], "_themes");
+        ], "_units");
         assert!(captures.is_none());
     }
 }
