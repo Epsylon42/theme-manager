@@ -1,6 +1,7 @@
 use std::{path::{Path, PathBuf}, process::Command};
 
 use crate::prelude::*;
+use utils::tree_reader::{TreeReader, TreeReaderNode};
 
 #[derive(Debug)]
 pub struct HookSet {
@@ -97,4 +98,30 @@ impl Hook {
     pub fn add(&mut self, name: String, path: PathBuf) {
         self.executables.push((name, path));
     }
+}
+
+pub fn read_from(dir: &Path) -> HookSet {
+    let mut hooks = HookSet::default();
+
+    let hooks_desc = &[
+        TreeReaderNode::Literal(String::from("hook")),
+        TreeReaderNode::Any,
+        TreeReaderNode::Any,
+    ];
+    for entry in TreeReader::new(dir, hooks_desc).get_file_entries_recursive() {
+        assert_eq!(entry.captures.0.len(), 2);
+        let mut captures = entry.captures.0;
+
+        let hook_name = captures.pop().unwrap();
+        let hook_set_name = captures.pop().unwrap();
+        match hook_set_name.as_str() {
+            "preinstall" => hooks.preinstall.add(hook_name, entry.path),
+            "postinstall" => hooks.postinstall.add(hook_name, entry.path),
+            "preremove" => hooks.preremove.add(hook_name, entry.path),
+            "postremove" => hooks.postremove.add(hook_name, entry.path),
+            _ => {}
+        }
+    }
+
+    hooks
 }

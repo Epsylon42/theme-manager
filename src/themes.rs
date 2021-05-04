@@ -28,8 +28,21 @@ impl ThemeDesc {
     }
 }
 
-pub fn read_themes(dir: &Path) -> HashMap<String, ThemeDesc> {
+pub fn read_from(dir: &Path) -> HashMap<String, ThemeDesc> {
     let mut themes = HashMap::<String, ThemeDesc>::new();
+
+    let themes_desc = &[
+        TreeReaderNode::Literal(String::from("theme")),
+        TreeReaderNode::AnyDir,
+    ];
+    for mut entry in TreeReader::new(dir, themes_desc).get_dir_entries_recursive() {
+        assert_eq!(entry.captures.0.len(), 1);
+        let theme_name = entry.captures.0.pop().unwrap();
+
+        let theme = ensure_contains(&mut themes, theme_name.clone());
+        theme.name = theme_name;
+        theme.dir = entry.path;
+    }
 
     let units_desc = &[
         TreeReaderNode::Literal(String::from("theme")),
@@ -48,10 +61,9 @@ pub fn read_themes(dir: &Path) -> HashMap<String, ThemeDesc> {
         let unit_name = captures.pop().unwrap();
         let theme_name = captures.pop().unwrap();
 
-        let theme = ensure_contains(&mut themes, theme_name.clone());
+        let theme = themes.get_mut(&theme_name).unwrap();
         let unit = ensure_contains(&mut theme.units, unit_name);
         unit.values.insert(value_name, value);
-        theme.name = theme_name;
     }
 
     let hooks_desc = &[

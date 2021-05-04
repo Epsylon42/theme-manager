@@ -17,6 +17,8 @@ pub struct TreeReader<'a> {
 
 impl<'a> TreeReader<'a> {
     pub fn new(dir: &'a Path, desc: &'a[TreeReaderNode]) -> Self {
+        assert!(desc.len() > 0);
+
         TreeReader {
             dir,
             desc,
@@ -24,21 +26,38 @@ impl<'a> TreeReader<'a> {
     }
 
     pub fn get_file_entries_recursive(&self) -> Vec<TreeReaderEntry> {
-        let add_additional_capture = matches!(self.desc.get(0), Some(TreeReaderNode::Any | TreeReaderNode::AnyDir));
-
         let mut entries = self.get_file_entries();
         for dir_entry in self.get_dir_entries() {
             if let Some(reader) = self.step_down(&dir_entry.path) {
                 let mut new_entries = reader.get_file_entries_recursive();
-                if add_additional_capture {
-                    let additional_capture = reader.dir.file_name()
-                        .and_then(|file_name| file_name.to_str())
-                        .unwrap_or("");
-
-                    for entry in &mut new_entries {
-                        entry.captures.0.insert(0, String::from(additional_capture));
-                    }
+                for entry in &mut new_entries {
+                    entry.captures.0.splice(..0, dir_entry.captures.0.iter().cloned());
                 }
+
+                entries.extend(new_entries);
+            }
+        }
+
+        debug_assert!(entries.iter().all(|entry| entry.captures.0.len() == self.expected_num_captures()));
+
+        entries
+    }
+
+    pub fn get_dir_entries_recursive(&self) -> Vec<TreeReaderEntry> {
+        let mut entries = self.get_dir_entries()
+            .into_iter()
+            .filter(|entry| entry.captures.0.len() == self.expected_num_captures())
+            .collect::<Vec<_>>();
+
+        for dir_entry in self.get_dir_entries() {
+            if let Some(reader) = self.step_down(&dir_entry.path) {
+                let new_entries = reader.get_dir_entries_recursive()
+                    .into_iter()
+                    .filter(|entry| entry.captures.0.len() == self.expected_num_captures())
+                    .map(|mut entry| {
+                        entry.captures.0.splice(..0, dir_entry.captures.0.iter().cloned());
+                        entry
+                    });
 
                 entries.extend(new_entries);
             }
@@ -74,8 +93,14 @@ impl<'a> TreeReader<'a> {
     fn step_down(&self, dir: &'a Path) -> Option<Self> {
         Some(TreeReader {
             dir,
-            desc: self.desc.get(1..)?,
+            desc: self.desc.get(dir.file_name()?.to_str()?.split('-').count()..)?,
         })
+    }
+
+    fn expected_num_captures(&self) -> usize {
+        self.desc.iter()
+            .filter(|node| matches!(node, TreeReaderNode::Any | TreeReaderNode::AnyDir))
+            .count()
     }
 }
 
@@ -156,7 +181,7 @@ fn match_dir_name(desc: &[TreeReaderNode], name: &str) -> Option<Captures> {
         }
     }
 
-    if *last_relevant_desc == TreeReaderNode::AnyDir {
+    if matches!(last_relevant_desc, TreeReaderNode::Any | TreeReaderNode::AnyDir) {
         captures.push(String::from(*last_name_part));
     }
 
@@ -215,6 +240,20 @@ mod tests {
     }
 
     #[test]
+    fn match_anydir_dir() {
+        let captures = match_dir_name(&[
+            TreeReaderNode::AnyDir
+        ], "abc");
+        assert!(captures.is_some());
+        assert_eq!(captures.unwrap().0, &[String::from("abc")]);
+
+        let captures = match_dir_name(&[
+            TreeReaderNode::AnyDir
+        ], "abc-def");
+        assert!(captures.is_none());
+    }
+
+    #[test]
     fn match_leaf_dir() {
         let captures = match_dir_name(&[
             TreeReaderNode::Literal(String::from("theme")),
@@ -256,6 +295,8 @@ mod tests {
         let captures = match_file_name(nodes, "unit-termite-color");
         assert!(captures.is_some());
         assert_eq!(captures.unwrap().0, &[String::from("termite"), String::from("color")]);
+
+        assert!(match_file_name(nodes, "unit-abc").is_none());
 
         assert!(match_dir_name(nodes, "units").is_some());
         assert!(match_dir_name(nodes, "unit-termite").is_some());

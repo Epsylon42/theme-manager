@@ -98,7 +98,7 @@ impl InstallDesc {
     }
 }
 
-pub fn read_install(dir: &Path) -> Result<InstallDesc, Error> {
+pub fn read_from(dir: &Path) -> Result<InstallDesc, Error> {
     let s = std::fs::read_to_string(dir.join("install.toml"))
         .context("Could not read install.toml")?;
     let mut desc: InstallDesc = toml::de::from_str(&s)
