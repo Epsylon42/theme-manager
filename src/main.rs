@@ -1,9 +1,10 @@
 use std::{collections::HashMap, path::{Path, PathBuf}};
 
-pub mod templates;
+pub mod install;
 pub mod themes;
 pub mod error;
 pub mod utils;
+pub mod hooks;
 
 mod prelude {
     pub use crate::error::{Error, ErrorExt, ResultExt};
@@ -12,13 +13,13 @@ mod prelude {
 
 use prelude::*;
 
-use templates::TemplatesDesc;
+use install::InstallDesc;
 use themes::ThemeDesc;
 
 #[derive(Debug)]
 pub struct ThemeManager {
     dir: PathBuf,
-    templates: TemplatesDesc,
+    install: InstallDesc,
     themes: HashMap<String, ThemeDesc>,
 }
 
@@ -26,57 +27,19 @@ impl ThemeManager {
     pub fn read_from_dir(dir: &Path) -> Result<Self, Error> {
         Ok(ThemeManager {
             dir: dir.to_owned(),
-            templates: Self::read_templates(&dir.join("templates"))
-                .context("Could not read templates directory")?,
+            install: install::read_install(&dir.join("install"))
+                .context("Could not read install directory")?,
             themes: themes::read_themes(dir),
         })
     }
 
-    fn read_templates(dir: &Path) -> Result<TemplatesDesc, Error> {
-        let s = std::fs::read_to_string(dir.join("templates.toml"))
-            .context("Could not read templates.toml")?;
-        let templates_desc: TemplatesDesc = toml::de::from_str(&s)
-            .context("templates.toml parse error")?;
-        Ok(templates_desc)
-    }
-
     pub fn install_theme(&self, theme: &str) {
         let theme = &self.themes[theme];
-        let empty_values = HashMap::new();
-
-        theme.hooks.preinstall.run().unwrap();
-
-        for unit in &self.templates.units {
-            let template = std::fs::read_to_string(self.dir.join("templates").join(&unit.file)).unwrap();
-            let template = mustache::compile_str(&template).unwrap();
-
-            let values = if let Some(theme_unit) = theme.units.get(unit.get_name()) {
-                &theme_unit.values
-            } else {
-                &empty_values
-            };
-            let result = template.render_to_string(values).unwrap();
-
-            let target = self.templates.resolve_target(&unit.target).unwrap();
-            if let Some(parent) = target.parent() {
-                std::fs::create_dir_all(parent).unwrap();
-            }
-            std::fs::write(&target, &result).unwrap();
-        }
-
-        theme.hooks.postinstall.run().unwrap();
+        self.install.install(theme, hooks::HookLauncher::Empty);
     }
 
     pub fn install_empty(&self) {
-        for unit in &self.templates.units {
-            let template = std::fs::read_to_string(self.dir.join("templates").join(&unit.file)).unwrap();
-
-            let target = self.templates.resolve_target(&unit.target).unwrap();
-            if let Some(parent) = target.parent() {
-                std::fs::create_dir_all(parent).unwrap();
-            }
-            std::fs::write(&target, &template).unwrap();
-        }
+        self.install.install_empty(hooks::HookLauncher::Empty);
     }
 }
 
