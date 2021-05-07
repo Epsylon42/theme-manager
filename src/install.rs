@@ -7,6 +7,8 @@ use crate::hooks::HookLauncher;
 
 #[derive(Debug, Deserialize)]
 pub struct FileDesc {
+    #[serde(default)]
+    pub name: Option<String>,
     pub path: PathBuf,
     pub target: String,
     #[serde(default)]
@@ -15,7 +17,10 @@ pub struct FileDesc {
 
 impl FileDesc {
     pub fn get_name(&self) -> &str {
-        self.path.to_str().unwrap()
+        self.name.as_ref()
+            .map(String::as_str)
+            .or_else(|| self.path.to_str())
+            .unwrap()
     }
 }
 
