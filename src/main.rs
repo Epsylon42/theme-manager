@@ -1,71 +1,81 @@
-use std::{collections::HashMap, path::{Path, PathBuf}};
+use std::path::PathBuf;
+
+use argh::FromArgs;
 
 pub mod install;
 pub mod themes;
 pub mod error;
 pub mod utils;
 pub mod hooks;
+pub mod manager;
 
 mod prelude {
     pub use crate::error::{Error, ErrorExt, ResultExt};
     pub use crate::utils;
 }
 
+use manager::ThemeManager;
 use prelude::*;
 
-use install::InstallDesc;
-use themes::ThemeDesc;
-use hooks::HookSet;
-
-#[derive(Debug)]
-pub struct ThemeManager {
-    dir: PathBuf,
-    install: InstallDesc,
-    themes: HashMap<String, ThemeDesc>,
-    global_hooks: HookSet,
+#[derive(FromArgs)]
+///
+struct Args {
+    #[argh(option)]
+    /// dir
+    dir: Option<PathBuf>,
+    #[argh(subcommand)]
+    command: Subcommand,
 }
 
-impl ThemeManager {
-    pub fn read_from_dir(dir: &Path) -> Result<Self, Error> {
-        Ok(ThemeManager {
-            dir: dir.to_owned(),
-            install: install::read_from(&dir.join("install"))
-                .context("Could not read install directory")?,
-            themes: themes::read_from(dir),
-            global_hooks: hooks::read_from(dir),
-        })
-    }
-
-    pub fn install_theme(&self, theme: &str) {
-        let theme = &self.themes[theme];
-        self.install.install(theme, hooks::HookLauncher::HookSet {
-            theme_dir: &theme.dir,
-            theme_name: &theme.name,
-            hooks: &self.global_hooks,
-        });
-    }
-
-    pub fn install_empty(&self) {
-        self.install.install_empty(hooks::HookLauncher::HookSet {
-            theme_dir: &self.dir,
-            theme_name: "empty",
-            hooks: &self.global_hooks,
-        });
-    }
+#[derive(FromArgs)]
+#[argh(subcommand)]
+enum Subcommand {
+    Install(InstallCommand),
+    Display(DisplayCommand),
 }
 
-fn main() {
-    match run() {
-        Ok(_) => {},
-        Err(e) => eprintln!("{}", e)
-    }
+#[derive(FromArgs)]
+#[argh(subcommand, name = "install")]
+///
+struct InstallCommand {
+    #[argh(positional)]
+    theme_name: String
+}
+
+#[derive(FromArgs)]
+#[argh(subcommand, name = "display")]
+///
+struct DisplayCommand {
+
+}
+
+fn main() -> Result<(), String> {
+    run().map_err(|e| e.to_string())
 }
 
 fn run() -> Result<(), Error> {
-    let data = std::env::args().nth(1).unwrap();
-    let theme_name = std::env::args().nth(2).unwrap();
+    let args: Args = argh::from_env();
 
-    let manager = ThemeManager::read_from_dir(Path::new(&data))?;
-    manager.install_theme(&theme_name);
+    let dir = match args.dir {
+        Some(dir) => dir,
+        None => std::env::var_os("THEME_MANAGER_DIR")
+            .map(PathBuf::from)
+            .ok_or(Error::NoDir)?,
+    };
+
+    let manager = ThemeManager::read_from_dir(&dir)?;
+
+    match args.command {
+        Subcommand::Install(InstallCommand {
+            theme_name,
+        }) => {
+            manager.install_theme(&theme_name);
+        }
+
+        Subcommand::Display(DisplayCommand {}) => {
+            dbg!(manager);
+        }
+    }
+
     Ok(())
 }

@@ -10,6 +10,8 @@ pub enum Error {
     Mustache(#[from] mustache::Error),
     #[error("{}", _0)]
     Hook(String),
+    #[error("Theme manager directory is not specified")]
+    NoDir,
     #[error("{}: {}", context, inner)]
     Context {
         context: String,
