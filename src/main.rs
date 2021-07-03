@@ -12,6 +12,8 @@ pub mod manager;
 mod prelude {
     pub use crate::error::{Error, ErrorExt, ResultExt};
     pub use crate::utils;
+
+    pub use log::{trace, warn, error};
 }
 
 use manager::ThemeManager;
@@ -54,6 +56,8 @@ fn main() -> Result<(), String> {
 }
 
 fn run() -> Result<(), Error> {
+    env_logger::init();
+
     let args: Args = argh::from_env();
 
     let dir = match args.dir {

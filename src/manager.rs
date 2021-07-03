@@ -30,7 +30,7 @@ impl ThemeManager {
             theme_dir: &theme.dir,
             theme_name: &theme.name,
             hooks: &self.global_hooks,
-        });
+        }).unwrap();
     }
 
     pub fn install_empty(&self) {
@@ -38,6 +38,6 @@ impl ThemeManager {
             theme_dir: &self.dir,
             theme_name: "empty",
             hooks: &self.global_hooks,
-        });
+        }).unwrap();
     }
 }

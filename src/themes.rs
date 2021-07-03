@@ -29,6 +29,8 @@ impl ThemeDesc {
 }
 
 pub fn read_from(dir: &Path) -> HashMap<String, ThemeDesc> {
+    trace!("Reading themes from {:?}", dir);
+
     let mut themes = HashMap::<String, ThemeDesc>::new();
 
     let themes_desc = &[
@@ -38,6 +40,7 @@ pub fn read_from(dir: &Path) -> HashMap<String, ThemeDesc> {
     for mut entry in TreeReader::new(dir, themes_desc).get_dir_entries_recursive() {
         assert_eq!(entry.captures.0.len(), 1);
         let theme_name = entry.captures.0.pop().unwrap();
+        trace!("Found theme '{}' in {:?}", theme_name, entry.path);
 
         let theme = ensure_contains(&mut themes, theme_name.clone());
         theme.name = theme_name;
@@ -55,15 +58,24 @@ pub fn read_from(dir: &Path) -> HashMap<String, ThemeDesc> {
         assert_eq!(entry.captures.0.len(), 3);
         let mut captures = entry.captures.0;
 
-        let value = std::fs::read_to_string(entry.path).unwrap();
-
         let value_name = captures.pop().unwrap();
         let unit_name = captures.pop().unwrap();
         let theme_name = captures.pop().unwrap();
 
-        let theme = themes.get_mut(&theme_name).unwrap();
-        let unit = ensure_contains(&mut theme.units, unit_name);
-        unit.values.insert(value_name, value);
+        trace!("Found file with value '{}' for unit '{}' for theme '{}'", value_name, unit_name, theme_name);
+
+        match std::fs::read_to_string(&entry.path) {
+            Ok(value) =>  {
+                let theme = themes.get_mut(&theme_name)
+                    .expect("Found unit belonging to a nonexistent theme. This is probably a bug.");
+                let unit = ensure_contains(&mut theme.units, unit_name);
+                unit.values.insert(value_name, value);
+            }
+            Err(e) => {
+                error!("Could not read {:?}: {}", entry.path, e);
+                continue;
+            }
+        }
     }
 
     let hooks_desc = &[
@@ -81,13 +93,16 @@ pub fn read_from(dir: &Path) -> HashMap<String, ThemeDesc> {
         let hook_set_name = captures.pop().unwrap();
         let theme_name = captures.pop().unwrap();
 
-        let theme = ensure_contains(&mut themes, theme_name);
+        trace!("Found {} hook '{}' for theme '{}'", hook_set_name, hook_name, theme_name);
+
+        let theme = themes.get_mut(&theme_name)
+            .expect("Found hook belonging to a nonexistent theme. This is probably a bug.");
         match hook_set_name.as_str() {
             "preinstall" => theme.hooks.preinstall.add(hook_name, entry.path),
             "postinstall" => theme.hooks.postinstall.add(hook_name, entry.path),
             "preremove" => theme.hooks.preremove.add(hook_name, entry.path),
             "postremove" => theme.hooks.postremove.add(hook_name, entry.path),
-            _ => {}
+            _ => warn!("Hook set '{}' is invalid. Hook will be ignored", hook_set_name),
         }
     }
 

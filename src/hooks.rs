@@ -15,22 +15,37 @@ impl Default for HookSet {
     fn default() -> Self {
         HookSet {
             preinstall: Hook {
+                global: false,
                 name: String::from("Preinstall"),
                 executables: Vec::new(),
             },
             postinstall: Hook {
+                global: false,
                 name: String::from("Postinstall"),
                 executables: Vec::new(),
             },
             preremove: Hook {
+                global: false,
                 name: String::from("Preremove"),
                 executables: Vec::new(),
             },
             postremove: Hook {
+                global: false,
                 name: String::from("Postremove"),
                 executables: Vec::new(),
             },
         }
+    }
+}
+
+impl HookSet {
+    pub fn global() -> Self {
+        let mut set = HookSet::default();
+        for hook in [&mut set.preinstall, &mut set.postinstall, &mut set.preremove, &mut set.postremove] {
+            hook.global = true;
+        }
+
+        set
     }
 }
 
@@ -68,15 +83,24 @@ impl<'a> HookLauncher<'a> {
 
 #[derive(Debug)]
 pub struct Hook {
+    global: bool,
     name: String,
     executables: Vec<(String, PathBuf)>,
 }
 
 impl Hook {
-    pub fn run(&self, theme_dir: &Path, theme_name: &str) -> Result<(), Error> {
+    fn run(&self, theme_dir: &Path, theme_name: &str) -> Result<(), Error> {
+        if self.global {
+            trace!("Running global {} hook for theme {}", self.name, theme_name);
+        } else {
+            trace!("Running {} hook for theme {}", self.name, theme_name);
+        }
+
         for (name, executable) in &self.executables {
+            trace!("Running executable '{}' at {:?}", name, executable);
+
             let mut handle = Command::new(executable)
-                .current_dir(executable.parent().unwrap())
+                .current_dir(executable.parent().expect("Hook path does not have a parent. This is probably a bug"))
                 .arg(theme_dir)
                 .arg(theme_name)
                 .spawn()
@@ -84,11 +108,15 @@ impl Hook {
 
             let exit_status = handle.wait()?;
             if !exit_status.success() {
-                if let Some(code) = exit_status.code() {
-                    return Err(Error::Hook(format!("{} hook '{}' finished with exit code {}", self.name, name, code)));
-                } else {
-                    return Err(Error::Hook(format!("{} hook '{}' terminated by signal", self.name, name)));
-                }
+                return Err(Error::Hook {
+                    name: self.name.clone(),
+                    executable: name.clone(),
+                    cause: if let Some(code) = exit_status.code() {
+                        format!("finished with exit code {}", code)
+                    } else {
+                        String::from("terminated by signal")
+                    },
+                });
             }
         }
 
@@ -101,7 +129,9 @@ impl Hook {
 }
 
 pub fn read_from(dir: &Path) -> HookSet {
-    let mut hooks = HookSet::default();
+    trace!("Reading global hooks from {:?}", dir);
+
+    let mut hooks = HookSet::global();
 
     let hooks_desc = &[
         TreeReaderNode::Literal(String::from("hook")),
@@ -114,12 +144,15 @@ pub fn read_from(dir: &Path) -> HookSet {
 
         let hook_name = captures.pop().unwrap();
         let hook_set_name = captures.pop().unwrap();
+
+        trace!("Found {} hook '{}'", hook_set_name, hook_name);
+
         match hook_set_name.as_str() {
             "preinstall" => hooks.preinstall.add(hook_name, entry.path),
             "postinstall" => hooks.postinstall.add(hook_name, entry.path),
             "preremove" => hooks.preremove.add(hook_name, entry.path),
             "postremove" => hooks.postremove.add(hook_name, entry.path),
-            _ => {}
+            _ => warn!("Hook set '{}' is invalid. Hook will be ignored", hook_set_name),
         }
     }
 

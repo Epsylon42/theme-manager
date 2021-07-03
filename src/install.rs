@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::{Path, PathBuf}};
+use std::{collections::HashMap, convert::TryFrom, path::{Path, PathBuf}};
 use serde::Deserialize;
 
 use crate::prelude::*;
@@ -6,7 +6,7 @@ use crate::themes::ThemeDesc;
 use crate::hooks::HookLauncher;
 
 #[derive(Debug, Deserialize)]
-pub struct FileDesc {
+pub struct FileDescDeserialize {
     #[serde(default)]
     pub name: Option<String>,
     pub path: PathBuf,
@@ -15,12 +15,32 @@ pub struct FileDesc {
     pub template: bool,
 }
 
-impl FileDesc {
-    pub fn get_name(&self) -> &str {
-        self.name.as_ref()
-            .map(String::as_str)
-            .or_else(|| self.path.to_str())
-            .unwrap()
+#[derive(Debug, Deserialize)]
+#[serde(try_from = "FileDescDeserialize")]
+pub struct FileDesc {
+    pub name: String,
+    pub path: PathBuf,
+    pub target: String,
+    pub template: bool,
+}
+
+impl TryFrom<FileDescDeserialize> for FileDesc {
+    type Error = Error;
+
+    fn try_from(value: FileDescDeserialize) -> Result<Self, Self::Error> {
+        let file_stem = value.path.file_stem()
+            .ok_or(Error::InvalidPath { /*TODO*/ })?
+            .to_str()
+            .ok_or(Error::InvalidPath { /*TODO*/ })?;
+
+        let name = value.name.unwrap_or_else(|| String::from(file_stem));
+
+        Ok(FileDesc {
+            name,
+            path: value.path,
+            target: value.target,
+            template: value.template,
+        })
     }
 }
 
@@ -34,54 +54,72 @@ pub struct InstallDesc {
 }
 
 impl InstallDesc {
-    pub fn install(&self, theme: &ThemeDesc, global_hooks: HookLauncher) {
+    pub fn install(&self, theme: &ThemeDesc, global_hooks: HookLauncher) -> Result<(), Error> {
+        trace!("Installing theme '{}'", theme.name);
+
         let theme_hooks = theme.get_hook_launcher();
-        global_hooks.run_preinstall().unwrap();
-        theme_hooks.run_preinstall().unwrap();
+        global_hooks.run_preinstall().context("Global preinstall hooks")?;
+        theme_hooks.run_preinstall().context("Theme preinstall hooks")?;
 
         for file in &self.files {
-            if file.template {
-                self.install_template(theme, file);
+            let res = if file.template {
+                self.install_template(theme, file)
             } else {
-                self.install_copy(theme, file);
-            }
+                self.install_copy(theme, file)
+            };
+
+            res.with_context(|| format!("Installing {}", file.name))?;
         }
 
-        global_hooks.run_postinstall().unwrap();
-        theme_hooks.run_postinstall().unwrap();
+        global_hooks.run_postinstall().context("Global postinstall hooks")?;
+        theme_hooks.run_postinstall().context("Global postinstall hooks")?;
+
+        Ok(())
     }
 
-    pub fn install_empty(&self, global_hooks: HookLauncher) {
-        self.install(&Default::default(), global_hooks);
+    pub fn install_empty(&self, global_hooks: HookLauncher) -> Result<(), Error> {
+        self.install(&Default::default(), global_hooks)
     }
 
-    fn install_template(&self, theme: &ThemeDesc, file: &FileDesc) {
-        let path = self.resolve_path(theme, &file.path);
-        let template = std::fs::read_to_string(self.dir.join(path)).unwrap();
-        let template = mustache::compile_str(&template).unwrap();
+    fn install_template(&self, theme: &ThemeDesc, unit: &FileDesc) -> Result<(), Error> {
+        trace!("Installing template '{}'", unit.name);
+
+        let path = self.resolve_path(theme, &unit.path);
+        let template = std::fs::read_to_string(self.dir.join(path))
+            .context("Failed to read template file")?;
+        let template = mustache::compile_str(&template)
+            .context("Failed to compile mustache template")?;
 
         let empty_values = HashMap::new();
-        let values = if let Some(theme_unit) = theme.units.get(file.get_name()) {
+        let values = if let Some(theme_unit) = theme.units.get(&unit.name) {
             &theme_unit.values
         } else {
             &empty_values
         };
 
         let result = template.render_to_string(values).unwrap();
-        let target = self.resolve_target(&file.target);
+        let target = self.resolve_target(&unit.target)
+            .context("Failed to resolve installation path")?;
         if let Some(parent) = target.parent() {
-            std::fs::create_dir_all(parent).unwrap();
+            std::fs::create_dir_all(parent).context("Failed to create parent directory")?;
         }
-        std::fs::write(&target, &result).unwrap();
+        std::fs::write(&target, &result).context("Failed to write file")?;
+
+        Ok(())
     }
 
-    fn install_copy(&self, theme: &ThemeDesc, file: &FileDesc) {
-        let path = self.resolve_path(theme, &file.path);
-        let target = self.resolve_target(&file.target);
+    fn install_copy(&self, theme: &ThemeDesc, unit: &FileDesc) -> Result<(), Error> {
+        trace!("Installing file '{}'", unit.name);
+
+        let path = self.resolve_path(theme, &unit.path);
+        let target = self.resolve_target(&unit.target)
+            .context("Failed to resolve installation path")?;
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent).unwrap();
         }
         std::fs::copy(path, target).unwrap();
+
+        Ok(())
     }
 
     fn resolve_path(&self, theme: &ThemeDesc, path: &Path) -> PathBuf {
@@ -93,17 +131,19 @@ impl InstallDesc {
         }
     }
 
-    fn resolve_target(&self, target: &str) -> PathBuf {
+    fn resolve_target(&self, target: &str) -> Result<PathBuf, Error> {
         let target = mustache::compile_str(target)
             .unwrap()
             .render_to_string(&self.vars)
             .unwrap();
 
-        PathBuf::from(target)
+        Ok(PathBuf::from(target))
     }
 }
 
 pub fn read_from(dir: &Path) -> Result<InstallDesc, Error> {
+    trace!("Reading install data from {:?}", dir);
+
     let s = std::fs::read_to_string(dir.join("install.toml"))
         .context("Could not read install.toml")?;
     let mut desc: InstallDesc = toml::de::from_str(&s)

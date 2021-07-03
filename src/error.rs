@@ -8,8 +8,16 @@ pub enum Error {
     Deserialize(#[from] toml::de::Error),
     #[error("{}", _0)]
     Mustache(#[from] mustache::Error),
-    #[error("{}", _0)]
-    Hook(String),
+    #[error("Invalid path")]
+    InvalidPath {
+
+    },
+    #[error("{} hook {} {}", name, executable, cause)]
+    Hook {
+        name: String,
+        executable: String,
+        cause: String,
+    },
     #[error("Theme manager directory is not specified")]
     NoDir,
     #[error("{}: {}", context, inner)]
