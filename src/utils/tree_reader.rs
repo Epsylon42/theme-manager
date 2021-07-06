@@ -2,9 +2,10 @@ use std::path::{Path, PathBuf};
 
 use crate::prelude::*;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum TreeReaderNode {
     Literal(String),
+    Pattern(regex::Regex),
     AnyDir,
     Any,
 }
@@ -99,8 +100,12 @@ impl<'a> TreeReader<'a> {
 
     fn expected_num_captures(&self) -> usize {
         self.desc.iter()
-            .filter(|node| matches!(node, TreeReaderNode::Any | TreeReaderNode::AnyDir))
-            .count()
+            .map(|node| match node {
+                TreeReaderNode::Any | TreeReaderNode::AnyDir => 1,
+                TreeReaderNode::Pattern(pat) => pat.captures_len() - 1,
+                _ => 0,
+            })
+            .sum()
     }
 }
 
@@ -126,6 +131,16 @@ fn match_file_name(desc: &[TreeReaderNode], name: &str) -> Option<Captures> {
     for (desc_part, name_part) in desc.iter().zip(name.split('-')) {
         match desc_part {
             TreeReaderNode::Literal(x) => if x != name_part {
+                return None;
+            }
+
+            TreeReaderNode::Pattern(pat) => if let Some(cap) = pat.captures(name_part) {
+                for i in 1..cap.len() {
+                    if let Some(cap) = cap.get(i) {
+                        captures.push(cap.as_str().to_owned());
+                    }
+                }
+            } else {
                 return None;
             }
 
@@ -160,7 +175,7 @@ fn match_dir_name(desc: &[TreeReaderNode], name: &str) -> Option<Captures> {
             return None;
         }
 
-        TreeReaderNode::Any => if name_parts.len() == desc.len() {
+        TreeReaderNode::Any | TreeReaderNode::Pattern(_) => if name_parts.len() == desc.len() {
             return None;
         }
 
@@ -172,6 +187,16 @@ fn match_dir_name(desc: &[TreeReaderNode], name: &str) -> Option<Captures> {
     for (desc_part, name_part) in desc.iter().zip(name_parts_except_last) {
         match desc_part {
             TreeReaderNode::Literal(x) => if x != name_part {
+                return None;
+            }
+
+            TreeReaderNode::Pattern(pat) => if let Some(cap) = pat.captures(name_part) {
+                for i in 1..cap.len() {
+                    if let Some(cap) = cap.get(i) {
+                        captures.push(cap.as_str().to_owned());
+                    }
+                }
+            } else {
                 return None;
             }
 
@@ -301,6 +326,18 @@ mod tests {
         assert!(match_dir_name(nodes, "units").is_some());
         assert!(match_dir_name(nodes, "unit-termite").is_some());
         assert!(match_dir_name(nodes, "unit-termite-color").is_none());
+    }
+
+    #[test]
+    fn match_pattern() {
+        let nodes = &[
+            TreeReaderNode::Literal(String::from("unit")),
+            TreeReaderNode::Pattern(regex::Regex::new("^(.*)\\.toml$").unwrap())
+        ];
+
+        let captures = match_file_name(nodes, "unit-test.toml");
+        assert!(captures.is_some());
+        assert_eq!(captures.unwrap().0, &[String::from("test")]);
     }
 
     #[test]
