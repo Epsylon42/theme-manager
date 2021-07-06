@@ -5,6 +5,8 @@ use crate::prelude::*;
 use crate::hooks::{HookSet, HookLauncher};
 use utils::tree_reader::{TreeReader, TreeReaderNode};
 
+use regex::Regex;
+
 #[derive(Debug, Default)]
 pub struct UnitDesc {
     pub values: HashMap<String, String>,
@@ -47,14 +49,21 @@ pub fn read_from(dir: &Path) -> HashMap<String, ThemeDesc> {
         theme.dir = entry.path;
     }
 
-    let units_desc = &[
+    read_units(dir, &mut themes);
+    read_hooks(dir, &mut themes);
+
+    themes
+}
+
+fn read_units(dir: &Path, themes: &mut HashMap<String, ThemeDesc>) {
+    let unit_values_desc = &[
         TreeReaderNode::Literal(String::from("theme")),
         TreeReaderNode::AnyDir,
         TreeReaderNode::Literal(String::from("unit")),
         TreeReaderNode::Any,
         TreeReaderNode::Any,
     ];
-    for entry in TreeReader::new(dir, units_desc).get_file_entries_recursive() {
+    for entry in TreeReader::new(dir, unit_values_desc).get_file_entries_recursive() {
         assert_eq!(entry.captures.0.len(), 3);
         let mut captures = entry.captures.0;
 
@@ -64,20 +73,53 @@ pub fn read_from(dir: &Path) -> HashMap<String, ThemeDesc> {
 
         trace!("Found file with value '{}' for unit '{}' for theme '{}'", value_name, unit_name, theme_name);
 
-        match std::fs::read_to_string(&entry.path) {
-            Ok(value) =>  {
-                let theme = themes.get_mut(&theme_name)
-                    .expect("Found unit belonging to a nonexistent theme. This is probably a bug.");
-                let unit = ensure_contains(&mut theme.units, unit_name);
+        let theme = themes.get_mut(&theme_name)
+            .expect("Found unit belonging to a nonexistent theme. This is probably a bug.");
+        let unit = ensure_contains(&mut theme.units, unit_name);
+
+        match read_value_file(&entry.path) {
+            Ok(value) => {
                 unit.values.insert(value_name, value);
             }
             Err(e) => {
-                error!("Could not read {:?}: {}", entry.path, e);
+                error!("Could not read value file {:?}: {}", entry.path, e);
                 continue;
             }
         }
     }
 
+    let units_compound_desc = &[
+        TreeReaderNode::Literal(String::from("theme")),
+        TreeReaderNode::AnyDir,
+        TreeReaderNode::Literal(String::from("unit")),
+        TreeReaderNode::Pattern(Regex::new("^(.*)\\.toml$").unwrap())
+    ];
+    for entry in TreeReader::new(dir, units_compound_desc).get_file_entries_recursive() {
+        assert_eq!(entry.captures.0.len(), 2);
+        let mut captures = entry.captures.0;
+
+        let unit_name = captures.pop().unwrap();
+        let theme_name = captures.pop().unwrap();
+
+        trace!("Found compound file with values for unit '{}' for theme '{}'", unit_name, theme_name);
+
+        let theme = themes.get_mut(&theme_name)
+            .expect("Found unit belonging to a nonexistent theme. This is probably a bug.");
+        let unit = ensure_contains(&mut theme.units, unit_name);
+
+        match read_compound_file(&entry.path) {
+            Ok(values) => {
+                unit.values.extend(values);
+            }
+            Err(e) => {
+                error!("Could not read compound file {:?}: {}", entry.path, e);
+                continue;
+            }
+        }
+    }
+}
+
+fn read_hooks(dir: &Path, themes: &mut HashMap<String, ThemeDesc>) {
     let hooks_desc = &[
         TreeReaderNode::Literal(String::from("theme")),
         TreeReaderNode::AnyDir,
@@ -105,8 +147,18 @@ pub fn read_from(dir: &Path) -> HashMap<String, ThemeDesc> {
             _ => warn!("Hook set '{}' is invalid. Hook will be ignored", hook_set_name),
         }
     }
+}
 
-    themes
+fn read_value_file(path: &Path) -> Result<String, Error> {
+    Ok(std::fs::read_to_string(path)?)
+}
+
+fn read_compound_file(path: &Path) -> Result<HashMap<String, String>, Error> {
+    let data = read_value_file(path)?;
+    let values: HashMap<String, String> = toml::de::from_str::<HashMap<String, String>>(&data)
+        .context("Format error")?;
+
+    Ok(values)
 }
 
 fn ensure_contains<'a, T: Default>(map: &'a mut HashMap<String, T>, key: String) -> &'a mut T {
