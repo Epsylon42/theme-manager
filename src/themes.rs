@@ -12,12 +12,19 @@ pub struct UnitDesc {
     pub values: HashMap<String, String>,
 }
 
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct ThemeOptions {
+    #[serde(default)]
+    pub inherits: Option<String>
+}
+
 #[derive(Debug, Default)]
 pub struct ThemeDesc {
     pub name: String,
     pub dir: PathBuf,
     pub hooks: HookSet,
     pub units: HashMap<String, UnitDesc>,
+    pub options: ThemeOptions,
 }
 
 impl ThemeDesc {
@@ -44,9 +51,37 @@ pub fn read_from(dir: &Path) -> HashMap<String, ThemeDesc> {
         let theme_name = entry.captures.0.pop().unwrap();
         trace!("Found theme '{}' in {:?}", theme_name, entry.path);
 
-        let theme = ensure_contains(&mut themes, theme_name.clone());
-        theme.name = theme_name;
+        let mut theme = ThemeDesc::default();
+        theme.name = theme_name.clone();
         theme.dir = entry.path;
+
+        let options_path = theme.dir.join("theme.toml");
+        let options = match std::fs::read_to_string(&options_path) {
+            Ok(options) => Some(options),
+
+            Err(e) => {
+                if options_path.exists() {
+                    error!("Could not read options file ({}): skipping theme", e);
+                    continue;
+                }
+                None
+            }
+        };
+
+        if let Some(options) = options {
+            let options = match toml::from_str(&options) {
+                Ok(options) => options,
+
+                Err(e) => {
+                    error!("Could not parse options file ({})", e);
+                    continue;
+                }
+            };
+
+            theme.options = options;
+        }
+
+        *ensure_contains(&mut themes, theme_name) = theme;
     }
 
     read_units(dir, &mut themes);

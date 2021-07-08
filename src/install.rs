@@ -54,50 +54,60 @@ pub struct InstallDesc {
 }
 
 impl InstallDesc {
-    pub fn install(&self, theme: &ThemeDesc, global_hooks: HookLauncher) -> Result<(), Error> {
-        trace!("Installing theme '{}'", theme.name);
+    pub fn install(&self, theme_chain: &[&ThemeDesc], global_hooks: HookLauncher) -> Result<(), Error> {
+        assert!(!theme_chain.is_empty());
+        trace!("Installing theme '{}'", theme_chain.last().unwrap().name);
+        for inherited in theme_chain.into_iter().rev().skip(1) {
+            trace!("Inherits '{}'", inherited.name);
+        }
 
-        let theme_hooks = theme.get_hook_launcher();
         global_hooks.run_preinstall().context("Global preinstall hooks")?;
-        theme_hooks.run_preinstall().context("Theme preinstall hooks")?;
+        for theme in theme_chain {
+            theme.get_hook_launcher().run_preinstall()
+                .with_context(|| format!("Theme '{}' preinstall hook", theme.name))?;
+        }
 
         for file in &self.files {
             let res = if file.template {
-                self.install_template(theme, file)
+                self.install_template(theme_chain, file)
             } else {
-                self.install_copy(theme, file)
+                self.install_copy(theme_chain, file)
             };
 
             res.with_context(|| format!("Installing {}", file.name))?;
         }
 
         global_hooks.run_postinstall().context("Global postinstall hooks")?;
-        theme_hooks.run_postinstall().context("Global postinstall hooks")?;
+        for theme in theme_chain {
+            theme.get_hook_launcher().run_postinstall()
+                .with_context(|| format!("Theme '{}' preinstall hook", theme.name))?;
+        }
 
         Ok(())
     }
 
     pub fn install_empty(&self, global_hooks: HookLauncher) -> Result<(), Error> {
-        self.install(&Default::default(), global_hooks)
+        self.install(&[&Default::default()], global_hooks)
     }
 
-    fn install_template(&self, theme: &ThemeDesc, unit: &FileDesc) -> Result<(), Error> {
+    fn install_template(&self, theme_chain: &[&ThemeDesc], unit: &FileDesc) -> Result<(), Error> {
         trace!("Installing template '{}'", unit.name);
 
-        let path = self.resolve_path(theme, &unit.path);
+        let path = self.resolve_theme_chain_path(theme_chain, &unit.path);
+
         let template = std::fs::read_to_string(self.dir.join(path))
             .context("Failed to read template file")?;
         let template = mustache::compile_str(&template)
             .context("Failed to compile mustache template")?;
 
-        let empty_values = HashMap::new();
-        let values = if let Some(theme_unit) = theme.units.get(&unit.name) {
-            &theme_unit.values
-        } else {
-            &empty_values
-        };
+        let mut values = HashMap::new();
+        for theme in theme_chain {
+            if let Some(theme_unit) = theme.units.get(&unit.name) {
+                values.extend(&theme_unit.values);
+            }
+        }
 
-        let result = template.render_to_string(values).unwrap();
+        let result = template.render_to_string(&values).unwrap();
         let target = self.resolve_target(&unit.target)
             .context("Failed to resolve installation path")?;
         if let Some(parent) = target.parent() {
@@ -108,10 +118,11 @@ impl InstallDesc {
         Ok(())
     }
 
-    fn install_copy(&self, theme: &ThemeDesc, unit: &FileDesc) -> Result<(), Error> {
+    fn install_copy(&self, theme_chain: &[&ThemeDesc], unit: &FileDesc) -> Result<(), Error> {
         trace!("Installing file '{}'", unit.name);
 
-        let path = self.resolve_path(theme, &unit.path);
+        let path = self.resolve_theme_chain_path(theme_chain, &unit.path);
+
         let target = self.resolve_target(&unit.target)
             .context("Failed to resolve installation path")?;
         if let Some(parent) = target.parent() {
@@ -122,13 +133,25 @@ impl InstallDesc {
         Ok(())
     }
 
-    fn resolve_path(&self, theme: &ThemeDesc, path: &Path) -> PathBuf {
-        let theme_path = theme.dir.join(path);
-        if std::fs::metadata(&theme_path).is_ok() {
-            theme_path
-        } else {
-            self.dir.join(path)
-        }
+    //fn resolve_theme_path(&self, theme: &ThemeDesc, path: &Path) -> Option<PathBuf> {
+        //let theme_path = theme.dir.join(path);
+        //if theme_path.exists() {
+            //Some(theme_path)
+        //} else {
+            //None
+        //}
+    //}
+
+    //fn resolve_theme_path_or_default(&self, theme: &ThemeDesc, path: &Path) -> PathBuf {
+        //self.resolve_theme_path(theme, path).unwrap_or_else(|| self.dir.join(path))
+    //}
+
+    fn resolve_theme_chain_path(&self, theme_chain: &[&ThemeDesc], path: &Path) -> PathBuf {
+        theme_chain.into_iter()
+            .rev()
+            .map(|theme| theme.dir.join(path))
+            .find(|path| path.exists())
+            .unwrap_or_else(|| self.dir.join(path))
     }
 
     fn resolve_target(&self, target: &str) -> Result<PathBuf, Error> {

@@ -25,8 +25,22 @@ impl ThemeManager {
     }
 
     pub fn install_theme(&self, theme: &str) {
-        let theme = &self.themes[theme];
-        self.install.install(theme, hooks::HookLauncher::HookSet {
+        let mut theme_chain = Vec::new();
+        let mut theme = self.themes.get(theme).expect("Theme does not exist");
+        while let Some(ref inherits) = theme.options.inherits {
+            let next = self.themes.get(inherits).expect("Inherited theme does not exist");
+            theme_chain.push(theme);
+            theme = next;
+        }
+        theme_chain.push(theme);
+        if let Some(default) = self.themes.get("default") {
+            if default as *const _ != (*theme_chain.last().unwrap()) as *const _ {
+                theme_chain.push(default);
+            }
+        }
+        theme_chain.reverse();
+
+        self.install.install(&theme_chain, hooks::HookLauncher::HookSet {
             theme_dir: &theme.dir,
             theme_name: &theme.name,
             hooks: &self.global_hooks,
