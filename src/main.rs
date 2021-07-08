@@ -2,18 +2,18 @@ use std::path::PathBuf;
 
 use argh::FromArgs;
 
-pub mod install;
-pub mod themes;
 pub mod error;
-pub mod utils;
 pub mod hooks;
+pub mod install;
 pub mod manager;
+pub mod themes;
+pub mod utils;
 
 mod prelude {
     pub use crate::error::{Error, ErrorExt, ResultExt};
     pub use crate::utils;
 
-    pub use log::{trace, warn, error};
+    pub use log::{error, trace, warn};
 }
 
 use manager::ThemeManager;
@@ -42,22 +42,18 @@ enum Subcommand {
 ///
 struct InstallCommand {
     #[argh(positional)]
-    theme_name: String
+    theme_name: String,
 }
 
 #[derive(FromArgs)]
 #[argh(subcommand, name = "display")]
 ///
-struct DisplayCommand {
-
-}
+struct DisplayCommand {}
 
 #[derive(FromArgs)]
 #[argh(subcommand, name = "update")]
 ///
-struct UpdateCommand {
-
-}
+struct UpdateCommand {}
 
 fn main() -> Result<(), String> {
     run().map_err(|e| e.to_string())
@@ -78,9 +74,7 @@ fn run() -> Result<(), Error> {
     let manager = ThemeManager::read_from_dir(&dir)?;
 
     match args.command {
-        Subcommand::Install(InstallCommand {
-            theme_name,
-        }) => {
+        Subcommand::Install(InstallCommand { theme_name }) => {
             manager.install_theme(&theme_name);
             manager.write_installed_theme(&theme_name);
         }

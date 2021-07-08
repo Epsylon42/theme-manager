@@ -9,9 +9,7 @@ pub enum Error {
     #[error("{}", _0)]
     Mustache(#[from] mustache::Error),
     #[error("Invalid path")]
-    InvalidPath {
-
-    },
+    InvalidPath {},
     #[error("{} hook {} {}", name, executable, cause)]
     Hook {
         name: String,
@@ -21,10 +19,7 @@ pub enum Error {
     #[error("Theme manager directory is not specified")]
     NoDir,
     #[error("{}: {}", context, inner)]
-    Context {
-        context: String,
-        inner: Box<Error>,
-    }
+    Context { context: String, inner: Box<Error> },
 }
 
 pub trait ErrorExt {
@@ -35,7 +30,7 @@ impl<E: Into<Error>> ErrorExt for E {
     fn context(self, context: impl Into<String>) -> Error {
         Error::Context {
             context: context.into(),
-            inner: Box::new(self.into())
+            inner: Box::new(self.into()),
         }
     }
 }

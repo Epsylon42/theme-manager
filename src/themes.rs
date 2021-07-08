@@ -1,8 +1,8 @@
-use std::path::{Path, PathBuf};
 use std::collections::{hash_map, HashMap};
+use std::path::{Path, PathBuf};
 
+use crate::hooks::{HookLauncher, HookSet};
 use crate::prelude::*;
-use crate::hooks::{HookSet, HookLauncher};
 use utils::tree_reader::{TreeReader, TreeReaderNode};
 
 use regex::Regex;
@@ -15,7 +15,7 @@ pub struct UnitDesc {
 #[derive(Debug, Default, serde::Deserialize)]
 pub struct ThemeOptions {
     #[serde(default)]
-    pub inherits: Option<String>
+    pub inherits: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -106,9 +106,15 @@ fn read_units(dir: &Path, themes: &mut HashMap<String, ThemeDesc>) {
         let unit_name = captures.pop().unwrap();
         let theme_name = captures.pop().unwrap();
 
-        trace!("Found file with value '{}' for unit '{}' for theme '{}'", value_name, unit_name, theme_name);
+        trace!(
+            "Found file with value '{}' for unit '{}' for theme '{}'",
+            value_name,
+            unit_name,
+            theme_name
+        );
 
-        let theme = themes.get_mut(&theme_name)
+        let theme = themes
+            .get_mut(&theme_name)
             .expect("Found unit belonging to a nonexistent theme. This is probably a bug.");
         let unit = ensure_contains(&mut theme.units, unit_name);
 
@@ -127,7 +133,7 @@ fn read_units(dir: &Path, themes: &mut HashMap<String, ThemeDesc>) {
         TreeReaderNode::Literal(String::from("theme")),
         TreeReaderNode::AnyDir,
         TreeReaderNode::Literal(String::from("unit")),
-        TreeReaderNode::Pattern(Regex::new("^(.*)\\.toml$").unwrap())
+        TreeReaderNode::Pattern(Regex::new("^(.*)\\.toml$").unwrap()),
     ];
     for entry in TreeReader::new(dir, units_compound_desc).get_file_entries_recursive() {
         assert_eq!(entry.captures.0.len(), 2);
@@ -136,9 +142,14 @@ fn read_units(dir: &Path, themes: &mut HashMap<String, ThemeDesc>) {
         let unit_name = captures.pop().unwrap();
         let theme_name = captures.pop().unwrap();
 
-        trace!("Found compound file with values for unit '{}' for theme '{}'", unit_name, theme_name);
+        trace!(
+            "Found compound file with values for unit '{}' for theme '{}'",
+            unit_name,
+            theme_name
+        );
 
-        let theme = themes.get_mut(&theme_name)
+        let theme = themes
+            .get_mut(&theme_name)
             .expect("Found unit belonging to a nonexistent theme. This is probably a bug.");
         let unit = ensure_contains(&mut theme.units, unit_name);
 
@@ -170,16 +181,25 @@ fn read_hooks(dir: &Path, themes: &mut HashMap<String, ThemeDesc>) {
         let hook_set_name = captures.pop().unwrap();
         let theme_name = captures.pop().unwrap();
 
-        trace!("Found {} hook '{}' for theme '{}'", hook_set_name, hook_name, theme_name);
+        trace!(
+            "Found {} hook '{}' for theme '{}'",
+            hook_set_name,
+            hook_name,
+            theme_name
+        );
 
-        let theme = themes.get_mut(&theme_name)
+        let theme = themes
+            .get_mut(&theme_name)
             .expect("Found hook belonging to a nonexistent theme. This is probably a bug.");
         match hook_set_name.as_str() {
             "preinstall" => theme.hooks.preinstall.add(hook_name, entry.path),
             "postinstall" => theme.hooks.postinstall.add(hook_name, entry.path),
             "preremove" => theme.hooks.preremove.add(hook_name, entry.path),
             "postremove" => theme.hooks.postremove.add(hook_name, entry.path),
-            _ => warn!("Hook set '{}' is invalid. Hook will be ignored", hook_set_name),
+            _ => warn!(
+                "Hook set '{}' is invalid. Hook will be ignored",
+                hook_set_name
+            ),
         }
     }
 }
@@ -190,8 +210,8 @@ fn read_value_file(path: &Path) -> Result<String, Error> {
 
 fn read_compound_file(path: &Path) -> Result<HashMap<String, String>, Error> {
     let data = read_value_file(path)?;
-    let values: HashMap<String, String> = toml::de::from_str::<HashMap<String, String>>(&data)
-        .context("Format error")?;
+    let values: HashMap<String, String> =
+        toml::de::from_str::<HashMap<String, String>>(&data).context("Format error")?;
 
     Ok(values)
 }

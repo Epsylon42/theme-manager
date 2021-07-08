@@ -13,17 +13,14 @@ pub enum TreeReaderNode {
 #[derive(Debug)]
 pub struct TreeReader<'a> {
     dir: &'a Path,
-    desc: &'a[TreeReaderNode],
+    desc: &'a [TreeReaderNode],
 }
 
 impl<'a> TreeReader<'a> {
-    pub fn new(dir: &'a Path, desc: &'a[TreeReaderNode]) -> Self {
+    pub fn new(dir: &'a Path, desc: &'a [TreeReaderNode]) -> Self {
         assert!(desc.len() > 0);
 
-        TreeReader {
-            dir,
-            desc,
-        }
+        TreeReader { dir, desc }
     }
 
     pub fn get_file_entries_recursive(&self) -> Vec<TreeReaderEntry> {
@@ -32,31 +29,41 @@ impl<'a> TreeReader<'a> {
             if let Some(reader) = self.step_down(&dir_entry.path) {
                 let mut new_entries = reader.get_file_entries_recursive();
                 for entry in &mut new_entries {
-                    entry.captures.0.splice(..0, dir_entry.captures.0.iter().cloned());
+                    entry
+                        .captures
+                        .0
+                        .splice(..0, dir_entry.captures.0.iter().cloned());
                 }
 
                 entries.extend(new_entries);
             }
         }
 
-        debug_assert!(entries.iter().all(|entry| entry.captures.0.len() == self.expected_num_captures()));
+        debug_assert!(entries
+            .iter()
+            .all(|entry| entry.captures.0.len() == self.expected_num_captures()));
 
         entries
     }
 
     pub fn get_dir_entries_recursive(&self) -> Vec<TreeReaderEntry> {
-        let mut entries = self.get_dir_entries()
+        let mut entries = self
+            .get_dir_entries()
             .into_iter()
             .filter(|entry| entry.captures.0.len() == self.expected_num_captures())
             .collect::<Vec<_>>();
 
         for dir_entry in self.get_dir_entries() {
             if let Some(reader) = self.step_down(&dir_entry.path) {
-                let new_entries = reader.get_dir_entries_recursive()
+                let new_entries = reader
+                    .get_dir_entries_recursive()
                     .into_iter()
                     .filter(|entry| entry.captures.0.len() == self.expected_num_captures())
                     .map(|mut entry| {
-                        entry.captures.0.splice(..0, dir_entry.captures.0.iter().cloned());
+                        entry
+                            .captures
+                            .0
+                            .splice(..0, dir_entry.captures.0.iter().cloned());
                         entry
                     });
 
@@ -70,11 +77,16 @@ impl<'a> TreeReader<'a> {
     pub fn get_file_entries(&self) -> Vec<TreeReaderEntry> {
         utils::read_dir(self.dir, utils::ReadDirOptions::Files)
             .map(|read_dir| {
-                read_dir.filter_map(|entry| {
-                    match_file_name(self.desc, &entry.file_name)
-                        .map(|captures| TreeReaderEntry { path: entry.path, captures })
-                })
-                .collect()
+                read_dir
+                    .filter_map(|entry| {
+                        match_file_name(self.desc, &entry.file_name).map(|captures| {
+                            TreeReaderEntry {
+                                path: entry.path,
+                                captures,
+                            }
+                        })
+                    })
+                    .collect()
             })
             .unwrap_or_else(|_| Vec::new())
     }
@@ -82,11 +94,16 @@ impl<'a> TreeReader<'a> {
     pub fn get_dir_entries(&self) -> Vec<TreeReaderEntry> {
         utils::read_dir(self.dir, utils::ReadDirOptions::Directories)
             .map(|read_dir| {
-                read_dir.filter_map(|entry| {
-                    match_dir_name(self.desc, &entry.file_name)
-                        .map(|captures| TreeReaderEntry { path: entry.path, captures })
-                })
-                .collect()
+                read_dir
+                    .filter_map(|entry| {
+                        match_dir_name(self.desc, &entry.file_name).map(|captures| {
+                            TreeReaderEntry {
+                                path: entry.path,
+                                captures,
+                            }
+                        })
+                    })
+                    .collect()
             })
             .unwrap_or_else(|_| Vec::new())
     }
@@ -94,12 +111,15 @@ impl<'a> TreeReader<'a> {
     fn step_down(&self, dir: &'a Path) -> Option<Self> {
         Some(TreeReader {
             dir,
-            desc: self.desc.get(dir.file_name()?.to_str()?.split('-').count()..)?,
+            desc: self
+                .desc
+                .get(dir.file_name()?.to_str()?.split('-').count()..)?,
         })
     }
 
     fn expected_num_captures(&self) -> usize {
-        self.desc.iter()
+        self.desc
+            .iter()
             .map(|node| match node {
                 TreeReaderNode::Any | TreeReaderNode::AnyDir => 1,
                 TreeReaderNode::Pattern(pat) => pat.captures_len() - 1,
@@ -130,18 +150,22 @@ fn match_file_name(desc: &[TreeReaderNode], name: &str) -> Option<Captures> {
     let mut captures = Vec::new();
     for (desc_part, name_part) in desc.iter().zip(name.split('-')) {
         match desc_part {
-            TreeReaderNode::Literal(x) => if x != name_part {
-                return None;
+            TreeReaderNode::Literal(x) => {
+                if x != name_part {
+                    return None;
+                }
             }
 
-            TreeReaderNode::Pattern(pat) => if let Some(cap) = pat.captures(name_part) {
-                for i in 1..cap.len() {
-                    if let Some(cap) = cap.get(i) {
-                        captures.push(cap.as_str().to_owned());
+            TreeReaderNode::Pattern(pat) => {
+                if let Some(cap) = pat.captures(name_part) {
+                    for i in 1..cap.len() {
+                        if let Some(cap) = cap.get(i) {
+                            captures.push(cap.as_str().to_owned());
+                        }
                     }
+                } else {
+                    return None;
                 }
-            } else {
-                return None;
             }
 
             TreeReaderNode::AnyDir => {
@@ -168,36 +192,44 @@ fn match_dir_name(desc: &[TreeReaderNode], name: &str) -> Option<Captures> {
 
     let name_parts = name.split('-').collect::<Vec<_>>();
 
-    let last_name_part = &name_parts[name_parts.len()-1];
-    let last_relevant_desc = &desc[name_parts.len()-1];
+    let last_name_part = &name_parts[name_parts.len() - 1];
+    let last_relevant_desc = &desc[name_parts.len() - 1];
     match last_relevant_desc {
-        TreeReaderNode::Literal(x) => if last_name_part != &make_plural(x) {
-            return None;
+        TreeReaderNode::Literal(x) => {
+            if last_name_part != &make_plural(x) {
+                return None;
+            }
         }
 
-        TreeReaderNode::Any | TreeReaderNode::Pattern(_) => if name_parts.len() == desc.len() {
-            return None;
+        TreeReaderNode::Any | TreeReaderNode::Pattern(_) => {
+            if name_parts.len() == desc.len() {
+                return None;
+            }
         }
 
         TreeReaderNode::AnyDir => {}
     }
 
     let mut captures = Vec::new();
-    let name_parts_except_last = &name_parts[..name_parts.len()-1];
+    let name_parts_except_last = &name_parts[..name_parts.len() - 1];
     for (desc_part, name_part) in desc.iter().zip(name_parts_except_last) {
         match desc_part {
-            TreeReaderNode::Literal(x) => if x != name_part {
-                return None;
+            TreeReaderNode::Literal(x) => {
+                if x != name_part {
+                    return None;
+                }
             }
 
-            TreeReaderNode::Pattern(pat) => if let Some(cap) = pat.captures(name_part) {
-                for i in 1..cap.len() {
-                    if let Some(cap) = cap.get(i) {
-                        captures.push(cap.as_str().to_owned());
+            TreeReaderNode::Pattern(pat) => {
+                if let Some(cap) = pat.captures(name_part) {
+                    for i in 1..cap.len() {
+                        if let Some(cap) = cap.get(i) {
+                            captures.push(cap.as_str().to_owned());
+                        }
                     }
+                } else {
+                    return None;
                 }
-            } else {
-                return None;
             }
 
             TreeReaderNode::Any | TreeReaderNode::AnyDir => {
@@ -206,7 +238,10 @@ fn match_dir_name(desc: &[TreeReaderNode], name: &str) -> Option<Captures> {
         }
     }
 
-    if matches!(last_relevant_desc, TreeReaderNode::Any | TreeReaderNode::AnyDir) {
+    if matches!(
+        last_relevant_desc,
+        TreeReaderNode::Any | TreeReaderNode::AnyDir
+    ) {
         captures.push(String::from(*last_name_part));
     }
 
@@ -229,61 +264,50 @@ mod tests {
 
     #[test]
     fn match_any_file() {
-        let captures = match_file_name(&[
-            TreeReaderNode::Any
-        ], "abc");
+        let captures = match_file_name(&[TreeReaderNode::Any], "abc");
         assert!(captures.is_some());
         assert_eq!(captures.unwrap().0, &[String::from("abc")]);
     }
 
     #[test]
     fn match_exact_file() {
-        let captures = match_file_name(&[
-            TreeReaderNode::Literal(String::from("abc"))
-        ], "abc");
+        let captures = match_file_name(&[TreeReaderNode::Literal(String::from("abc"))], "abc");
         assert!(captures.is_some());
         let expected: &[String] = &[];
         assert_eq!(captures.unwrap().0, expected);
 
-        let captures = match_file_name(&[
-            TreeReaderNode::Literal(String::from("def"))
-        ], "abc");
+        let captures = match_file_name(&[TreeReaderNode::Literal(String::from("def"))], "abc");
         assert!(captures.is_none());
     }
 
     #[test]
     fn match_any_dir() {
-        let captures = match_dir_name(&[
-            TreeReaderNode::Any
-        ], "abc");
+        let captures = match_dir_name(&[TreeReaderNode::Any], "abc");
         assert!(captures.is_none());
 
-        let captures = match_dir_name(&[
-            TreeReaderNode::Any
-        ], "abc-def");
+        let captures = match_dir_name(&[TreeReaderNode::Any], "abc-def");
         assert!(captures.is_none());
     }
 
     #[test]
     fn match_anydir_dir() {
-        let captures = match_dir_name(&[
-            TreeReaderNode::AnyDir
-        ], "abc");
+        let captures = match_dir_name(&[TreeReaderNode::AnyDir], "abc");
         assert!(captures.is_some());
         assert_eq!(captures.unwrap().0, &[String::from("abc")]);
 
-        let captures = match_dir_name(&[
-            TreeReaderNode::AnyDir
-        ], "abc-def");
+        let captures = match_dir_name(&[TreeReaderNode::AnyDir], "abc-def");
         assert!(captures.is_none());
     }
 
     #[test]
     fn match_leaf_dir() {
-        let captures = match_dir_name(&[
-            TreeReaderNode::Literal(String::from("theme")),
-            TreeReaderNode::Any,
-        ], "themes");
+        let captures = match_dir_name(
+            &[
+                TreeReaderNode::Literal(String::from("theme")),
+                TreeReaderNode::Any,
+            ],
+            "themes",
+        );
         assert!(captures.is_some());
         let expected: &[String] = &[];
         assert_eq!(captures.unwrap().0, expected);
@@ -319,7 +343,10 @@ mod tests {
 
         let captures = match_file_name(nodes, "unit-termite-color");
         assert!(captures.is_some());
-        assert_eq!(captures.unwrap().0, &[String::from("termite"), String::from("color")]);
+        assert_eq!(
+            captures.unwrap().0,
+            &[String::from("termite"), String::from("color")]
+        );
 
         assert!(match_file_name(nodes, "unit-abc").is_none());
 
@@ -332,7 +359,7 @@ mod tests {
     fn match_pattern() {
         let nodes = &[
             TreeReaderNode::Literal(String::from("unit")),
-            TreeReaderNode::Pattern(regex::Regex::new("^(.*)\\.toml$").unwrap())
+            TreeReaderNode::Pattern(regex::Regex::new("^(.*)\\.toml$").unwrap()),
         ];
 
         let captures = match_file_name(nodes, "unit-test.toml");
@@ -342,15 +369,16 @@ mod tests {
 
     #[test]
     fn ignore() {
-        let captures = match_file_name(&[
-            TreeReaderNode::Any
-        ], "_abc");
+        let captures = match_file_name(&[TreeReaderNode::Any], "_abc");
         assert!(captures.is_none());
 
-        let captures = match_dir_name(&[
-            TreeReaderNode::Literal(String::from("unit")),
-            TreeReaderNode::Any,
-        ], "_units");
+        let captures = match_dir_name(
+            &[
+                TreeReaderNode::Literal(String::from("unit")),
+                TreeReaderNode::Any,
+            ],
+            "_units",
+        );
         assert!(captures.is_none());
     }
 }

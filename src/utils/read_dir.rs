@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 pub enum ReadDirOptions {
     Files,
     Directories,
-    Both
+    Both,
 }
 
 impl ReadDirOptions {
@@ -12,7 +12,7 @@ impl ReadDirOptions {
         match self {
             ReadDirOptions::Files => metadata.is_file(),
             ReadDirOptions::Directories => metadata.is_dir(),
-            ReadDirOptions::Both => true
+            ReadDirOptions::Both => true,
         }
     }
 }
@@ -39,7 +39,10 @@ pub struct ReadDirEntry {
     pub entry_type: ReadDirEntryType,
 }
 
-pub fn read_dir(dir: &Path, options: ReadDirOptions) -> Result<impl Iterator<Item=ReadDirEntry>, std::io::Error> {
+pub fn read_dir(
+    dir: &Path,
+    options: ReadDirOptions,
+) -> Result<impl Iterator<Item = ReadDirEntry>, std::io::Error> {
     let iter = std::fs::read_dir(dir)?
         .filter_map(|entry| {
             let entry = entry.ok()?;
@@ -47,12 +50,14 @@ pub fn read_dir(dir: &Path, options: ReadDirOptions) -> Result<impl Iterator<Ite
             Some((entry, metadata))
         })
         .filter(move |(_, metadata)| options.filter(&metadata))
-        .map(|(entry, metadata)| {
-            ReadDirEntry {
-                file_name: entry.file_name().to_str().unwrap().to_owned(),
-                path: entry.path(),
-                entry_type: if metadata.is_file() { ReadDirEntryType::File } else { ReadDirEntryType::Directory },
-            }
+        .map(|(entry, metadata)| ReadDirEntry {
+            file_name: entry.file_name().to_str().unwrap().to_owned(),
+            path: entry.path(),
+            entry_type: if metadata.is_file() {
+                ReadDirEntryType::File
+            } else {
+                ReadDirEntryType::Directory
+            },
         });
 
     Ok(iter)

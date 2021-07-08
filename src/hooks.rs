@@ -1,4 +1,7 @@
-use std::{path::{Path, PathBuf}, process::Command};
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use crate::prelude::*;
 use utils::tree_reader::{TreeReader, TreeReaderNode};
@@ -41,7 +44,12 @@ impl Default for HookSet {
 impl HookSet {
     pub fn global() -> Self {
         let mut set = HookSet::default();
-        for hook in [&mut set.preinstall, &mut set.postinstall, &mut set.preremove, &mut set.postremove] {
+        for hook in [
+            &mut set.preinstall,
+            &mut set.postinstall,
+            &mut set.preremove,
+            &mut set.postremove,
+        ] {
             hook.global = true;
         }
 
@@ -62,9 +70,11 @@ pub enum HookLauncher<'a> {
 impl<'a> HookLauncher<'a> {
     pub fn run_preinstall(&self) -> Result<(), Error> {
         match self {
-            HookLauncher::HookSet { theme_dir, theme_name, hooks } => {
-                hooks.preinstall.run(theme_dir, theme_name)
-            }
+            HookLauncher::HookSet {
+                theme_dir,
+                theme_name,
+                hooks,
+            } => hooks.preinstall.run(theme_dir, theme_name),
 
             HookLauncher::Empty => Ok(()),
         }
@@ -72,9 +82,11 @@ impl<'a> HookLauncher<'a> {
 
     pub fn run_postinstall(&self) -> Result<(), Error> {
         match self {
-            HookLauncher::HookSet { theme_dir, theme_name, hooks } => {
-                hooks.postinstall.run(theme_dir, theme_name)
-            }
+            HookLauncher::HookSet {
+                theme_dir,
+                theme_name,
+                hooks,
+            } => hooks.postinstall.run(theme_dir, theme_name),
 
             HookLauncher::Empty => Ok(()),
         }
@@ -100,7 +112,11 @@ impl Hook {
             trace!("Running executable '{}' at {:?}", name, executable);
 
             let mut handle = Command::new(executable)
-                .current_dir(executable.parent().expect("Hook path does not have a parent. This is probably a bug"))
+                .current_dir(
+                    executable
+                        .parent()
+                        .expect("Hook path does not have a parent. This is probably a bug"),
+                )
                 .arg(theme_dir)
                 .arg(theme_name)
                 .spawn()
@@ -152,7 +168,10 @@ pub fn read_from(dir: &Path) -> HookSet {
             "postinstall" => hooks.postinstall.add(hook_name, entry.path),
             "preremove" => hooks.preremove.add(hook_name, entry.path),
             "postremove" => hooks.postremove.add(hook_name, entry.path),
-            _ => warn!("Hook set '{}' is invalid. Hook will be ignored", hook_set_name),
+            _ => warn!(
+                "Hook set '{}' is invalid. Hook will be ignored",
+                hook_set_name
+            ),
         }
     }
 
