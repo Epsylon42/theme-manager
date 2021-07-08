@@ -40,4 +40,19 @@ impl ThemeManager {
             hooks: &self.global_hooks,
         }).unwrap();
     }
+
+    pub fn update(&self) {
+        let installed_theme_file = self.dir.join(".cache/installed");
+        if installed_theme_file.exists() {
+            let theme_name = std::fs::read_to_string(installed_theme_file).expect("Could not read installed theme file");
+            self.install_theme(&theme_name);
+        } else {
+            eprintln!("No theme installed");
+        }
+    }
+
+    pub fn write_installed_theme(&self, theme_name: &str) {
+        std::fs::create_dir_all(self.dir.join(".cache")).expect("Could not create cache directory");
+        std::fs::write(self.dir.join(".cache/installed"), theme_name).expect("Could not record installed theme");
+    }
 }

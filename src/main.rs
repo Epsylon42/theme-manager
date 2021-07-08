@@ -34,6 +34,7 @@ struct Args {
 enum Subcommand {
     Install(InstallCommand),
     Display(DisplayCommand),
+    Update(UpdateCommand),
 }
 
 #[derive(FromArgs)]
@@ -48,6 +49,13 @@ struct InstallCommand {
 #[argh(subcommand, name = "display")]
 ///
 struct DisplayCommand {
+
+}
+
+#[derive(FromArgs)]
+#[argh(subcommand, name = "update")]
+///
+struct UpdateCommand {
 
 }
 
@@ -74,10 +82,15 @@ fn run() -> Result<(), Error> {
             theme_name,
         }) => {
             manager.install_theme(&theme_name);
+            manager.write_installed_theme(&theme_name);
         }
 
         Subcommand::Display(DisplayCommand {}) => {
             dbg!(manager);
+        }
+
+        Subcommand::Update(_) => {
+            manager.update();
         }
     }
 
