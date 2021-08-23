@@ -9,13 +9,17 @@ use crate::hooks::HookLauncher;
 use crate::prelude::*;
 use crate::themes::ThemeDesc;
 
+fn get_true() -> bool {
+    true
+}
+
 #[derive(Debug, Deserialize)]
 pub struct FileDescDeserialize {
     #[serde(default)]
     pub name: Option<String>,
     pub path: PathBuf,
     pub target: String,
-    #[serde(default)]
+    #[serde(default = "get_true")]
     pub template: bool,
 }
 
